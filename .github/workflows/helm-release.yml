@@ -339,7 +339,7 @@ jobs:
           fi
           
           # Convert comma-separated charts back to readable format for display
-          TESTED_CHARTS=$(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' ', ')
+          TESTED_CHARTS=$(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' ',\ ')
           
           # Prepare comment body
           if [ "${{ steps.helm-tests.outputs.exit-code }}" = "0" ]; then
@@ -350,7 +350,7 @@ jobs:
             ${{ steps.helm-tests.outputs.test-results-table }}
 
             **Summary:**
-            - ✅ Charts tested: **$TESTED_CHARTS**
+            - 📊 Charts tested: **$TESTED_CHARTS**
             - ✅ All template validations passed
             - ✅ All dry-run installations passed
 

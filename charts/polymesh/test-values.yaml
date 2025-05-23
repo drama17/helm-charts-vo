@@ -80,7 +80,7 @@ service:
     enabled: true
     type: ClusterIP
     port: 9615
-    servicemonitor: false
+    servicemonitor: true
   jsonrpc:
     enabled: false
     type: ClusterIP
