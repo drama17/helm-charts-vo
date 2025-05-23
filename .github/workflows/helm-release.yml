@@ -270,6 +270,29 @@ jobs:
       - name: Post PR comment with test results
         if: github.event_name == 'pull_request'
         run: |
+          # Wait a moment for artifact to be processed
+          sleep 5
+          
+          # Get artifact URL using GitHub API
+          ARTIFACT_INFO=$(curl -s \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts")
+          
+          # Extract artifact download URL (requires authentication)
+          ARTIFACT_URL=$(echo "$ARTIFACT_INFO" | jq -r '.artifacts[] | select(.name | startswith("helm-test-logs")) | .archive_download_url' | head -1)
+          
+          # Fallback to workflow run URL if artifact URL not found
+          if [ "$ARTIFACT_URL" = "null" ] || [ -z "$ARTIFACT_URL" ]; then
+            ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            ARTIFACT_TEXT="View workflow run and download artifacts"
+          else
+            ARTIFACT_TEXT="Download detailed test logs (requires GitHub login)"
+          fi
+          
+          # Generate workflow run URL for easy access
+          WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
           # Prepare comment body
           if [ "${{ steps.helm-tests.outputs.exit-code }}" = "0" ]; then
             comment_body="## 🎉 Helm Chart Tests Passed!
@@ -283,6 +306,11 @@ jobs:
             - ✅ All template validations passed
             - ✅ All dry-run installations passed
 
+            **📋 Detailed Information:**
+            - 🔗 [View workflow run]($WORKFLOW_URL)
+            - 📁 [$ARTIFACT_TEXT]($ARTIFACT_URL)
+            - 📝 Artifact name: \`helm-test-logs-${{ github.run_number }}\`
+
             The PR is ready for review! 🚀"
           else
             comment_body="## ❌ Helm Chart Tests Failed
@@ -295,6 +323,12 @@ jobs:
             - 📊 Charts tested: $(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' ' ')
             - ❌ Failed charts:${{ steps.helm-tests.outputs.failed-charts }}
             - ✅ Successful charts:${{ steps.helm-tests.outputs.success-charts }}
+
+            **🔍 Debugging Information:**
+            - 🔗 [View workflow run]($WORKFLOW_URL)
+            - 📁 [$ARTIFACT_TEXT]($ARTIFACT_URL)
+            - 📝 Artifact name: \`helm-test-logs-${{ github.run_number }}\`
+            - 💡 Check the \`Validate and test changed charts\` step for detailed error output
 
             Please fix the issues before merging. 🔧"
           fi
