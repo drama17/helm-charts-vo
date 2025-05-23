@@ -304,29 +304,28 @@ jobs:
         run: |
           # Generate URLs
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          
-          # Check if we have artifact URL
-          if [ "${{ steps.get-artifact-url.outputs.artifact-available }}" = "true" ]; then
-            ARTIFACT_URL="${{ steps.get-artifact-url.outputs.artifact-url }}"
+
+          # Use correct artifact step ID
+          if [ "${{ steps.artifact-url.outputs.artifact-available }}" = "true" ]; then
+            ARTIFACT_URL="${{ steps.artifact-url.outputs.artifact-url }}"
             ARTIFACT_LINK="- 📁 [Download detailed test logs]($ARTIFACT_URL)"
-            ARTIFACT_NOTE="Click the download link above to get detailed logs for all helm operations."
+            ARTIFACT_NOTE="Click the download link above to get detailed logs for all Helm operations."
           else
             ARTIFACT_LINK="- 📁 [View artifacts in workflow run]($WORKFLOW_URL) (look for \`helm-test-logs-${{ github.run_number }}\`)"
             ARTIFACT_NOTE="Download the \`helm-test-logs-${{ github.run_number }}\` artifact from the workflow run page."
           fi
 
-          # Format test results as a Markdown table
+          # Format test results into a real Markdown table
           TEST_RESULTS_TABLE=$(echo "${{ steps.helm-tests.outputs.test-results }}" | \
-            sed 's/^✅ \*\*\(.*\)\*\*: \(.*\), \(.*\)$/| ✅ \1 | \2 | \3 |/' | \
-            sed 's/^❌ \*\*\(.*\)\*\*: \(.*\), \(.*\)$/| ❌ \1 | \2 | \3 |/')
+            sed 's/^✅ \*\*\(.*\)\*\*: \(.*\), \(.*\)$/| ✅ | \1 | \2 | \3 |/' | \
+            sed 's/^❌ \*\*\(.*\)\*\*: \(.*\), \(.*\)$/| ❌ | \1 | \2 | \3 |/')
 
-          # Prepare chart lists
-          TESTED_CHARTS=$(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' ', ')
-          FAILED_CHARTS=$(echo '${{ steps.helm-tests.outputs.failed-charts }}' | tr ' ' ', ' | sed 's/^, //' | sed 's/, $//')
-          SUCCESS_CHARTS=$(echo '${{ steps.helm-tests.outputs.success-charts }}' | tr ' ' ', ' | sed 's/^, //' | sed 's/, $//')
+          # Prepare chart lists cleanly
+          TESTED_CHARTS=$(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' ', ' | sed 's/^, *//' | sed 's/, *$//')
+          FAILED_CHARTS=$(echo '${{ steps.helm-tests.outputs.failed-charts }}' | tr ' ' ', ' | sed 's/^, *//' | sed 's/, *$//')
+          SUCCESS_CHARTS=$(echo '${{ steps.helm-tests.outputs.success-charts }}' | tr ' ' ', ' | sed 's/^, *//' | sed 's/, *$//')
 
-          
-          # Prepare comment body
+          # Compose PR comment
           if [ "${{ steps.helm-tests.outputs.exit-code }}" = "0" ]; then
             comment_body="## 🎉 Helm Chart Tests Passed!
 
@@ -369,16 +368,16 @@ jobs:
           Please fix the issues before merging. 🔧"
           fi
 
-          
           # Post comment to PR using curl
           curl -X POST \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
             -d "{\"body\": $(echo "$comment_body" | jq -Rs .)}"
-          
-          # Exit with the original exit code
+
+          # Exit with original exit code
           exit ${{ steps.helm-tests.outputs.exit-code }}
+
 
       # - name: Run chart-releaser
       #   uses: helm/chart-releaser-action@v1.6.0
