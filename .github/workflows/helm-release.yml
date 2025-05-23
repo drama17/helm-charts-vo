@@ -141,13 +141,16 @@ jobs:
           mkdir -p /tmp/helm-logs
           
           # Initialize results tracking
-          TEST_RESULTS=""
+          TEST_RESULTS_TABLE=""
           FAILED_CHARTS=""
           SUCCESS_CHARTS=""
           EXIT_CODE=0
           
           # Convert comma-separated list to array
           IFS=',' read -ra CHARTS <<< "${{ needs.detect-changes.outputs.changed-charts }}"
+          
+          # Initialize table header
+          TEST_RESULTS_TABLE="| Chart | Template Validation | Dry-run Installation | Overall Status |\n|-------|-------------------|---------------------|----------------|\n"
           
           for chart in "${CHARTS[@]}"; do
             echo "::group::Testing chart: $chart"
@@ -162,7 +165,7 @@ jobs:
             if [ ! -f "$VALUES_FILE" ]; then
               echo "::error::Values file not found: $VALUES_FILE"
               FAILED_CHARTS="$FAILED_CHARTS $chart"
-              TEST_RESULTS="$TEST_RESULTS\n❌ **$chart**: Values file not found ($VALUES_FILE)"
+              TEST_RESULTS_TABLE="$TEST_RESULTS_TABLE| **$chart** | ❌ Values file not found | - | ❌ Failed |\n"
               EXIT_CODE=1
               echo "::endgroup::"
               continue
@@ -186,10 +189,10 @@ jobs:
             
             if [ $TEMPLATE_EXIT_CODE -eq 0 ]; then
               echo "✅ Template validation passed for $chart"
-              TEMPLATE_STATUS="✅ Template validation passed"
+              TEMPLATE_STATUS="✅ Passed"
             else
               echo "❌ Template validation failed for $chart (exit code: $TEMPLATE_EXIT_CODE)"
-              TEMPLATE_STATUS="❌ Template validation failed"
+              TEMPLATE_STATUS="❌ Failed"
               FAILED_CHARTS="$FAILED_CHARTS $chart"
               EXIT_CODE=1
             fi
@@ -220,34 +223,54 @@ jobs:
             
             if [ $DRYRUN_EXIT_CODE -eq 0 ]; then
               echo "✅ Dry-run installation passed for $chart"
-              DRYRUN_STATUS="✅ Dry-run installation passed"
+              DRYRUN_STATUS="✅ Passed"
             else
               echo "❌ Dry-run installation failed for $chart (exit code: $DRYRUN_EXIT_CODE)"
-              DRYRUN_STATUS="❌ Dry-run installation failed"
+              DRYRUN_STATUS="❌ Failed"
               FAILED_CHARTS="$FAILED_CHARTS $chart"
               EXIT_CODE=1
             fi
             echo "::endgroup::"
             
-            # Add chart results
+            # Determine overall status
             if [[ "$FAILED_CHARTS" == *"$chart"* ]]; then
-              TEST_RESULTS="$TEST_RESULTS\n❌ **$chart**: $TEMPLATE_STATUS, $DRYRUN_STATUS"
+              OVERALL_STATUS="❌ Failed"
             else
               SUCCESS_CHARTS="$SUCCESS_CHARTS $chart"
-              TEST_RESULTS="$TEST_RESULTS\n✅ **$chart**: $TEMPLATE_STATUS, $DRYRUN_STATUS"
+              OVERALL_STATUS="✅ Passed"
             fi
+            
+            # Add row to table
+            TEST_RESULTS_TABLE="$TEST_RESULTS_TABLE| **$chart** | $TEMPLATE_STATUS | $DRYRUN_STATUS | $OVERALL_STATUS |\n"
             
             echo "::endgroup::"
             echo ""
           done
           
+          # Clean up chart lists (remove leading/trailing spaces)
+          FAILED_CHARTS=$(echo "$FAILED_CHARTS" | xargs)
+          SUCCESS_CHARTS=$(echo "$SUCCESS_CHARTS" | xargs)
+          
+          # Convert spaces to commas for better formatting
+          if [ -n "$FAILED_CHARTS" ]; then
+            FAILED_CHARTS_FORMATTED=$(echo "$FAILED_CHARTS" | tr ' ' ',')
+          else
+            FAILED_CHARTS_FORMATTED=""
+          fi
+          
+          if [ -n "$SUCCESS_CHARTS" ]; then
+            SUCCESS_CHARTS_FORMATTED=$(echo "$SUCCESS_CHARTS" | tr ' ' ',')
+          else
+            SUCCESS_CHARTS_FORMATTED=""
+          fi
+          
           # Set outputs for PR comment
-          echo "test-results<<EOF" >> $GITHUB_OUTPUT
-          echo -e "$TEST_RESULTS" >> $GITHUB_OUTPUT
+          echo "test-results-table<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$TEST_RESULTS_TABLE" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
           echo "exit-code=$EXIT_CODE" >> $GITHUB_OUTPUT
-          echo "failed-charts=$FAILED_CHARTS" >> $GITHUB_OUTPUT
-          echo "success-charts=$SUCCESS_CHARTS" >> $GITHUB_OUTPUT
+          echo "failed-charts=$FAILED_CHARTS_FORMATTED" >> $GITHUB_OUTPUT
+          echo "success-charts=$SUCCESS_CHARTS_FORMATTED" >> $GITHUB_OUTPUT
           
           if [ $EXIT_CODE -eq 0 ]; then
             echo "🎉 All changed charts passed validation!"
@@ -304,82 +327,69 @@ jobs:
         run: |
           # Generate URLs
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-          # Use correct artifact step ID
+          
+          # Check if we have artifact URL
           if [ "${{ steps.artifact-url.outputs.artifact-available }}" = "true" ]; then
             ARTIFACT_URL="${{ steps.artifact-url.outputs.artifact-url }}"
             ARTIFACT_LINK="- 📁 [Download detailed test logs]($ARTIFACT_URL)"
-            ARTIFACT_NOTE="Click the download link above to get detailed logs for all Helm operations."
+            ARTIFACT_NOTE="Click the download link above to get detailed logs for all helm operations."
           else
             ARTIFACT_LINK="- 📁 [View artifacts in workflow run]($WORKFLOW_URL) (look for \`helm-test-logs-${{ github.run_number }}\`)"
             ARTIFACT_NOTE="Download the \`helm-test-logs-${{ github.run_number }}\` artifact from the workflow run page."
           fi
-
-          # Format test results into a real Markdown table
-          read -r -d '' TEST_RESULTS_TABLE <<EOF
-          $(echo "${{ steps.helm-tests.outputs.test-results }}" | \
-            sed 's/^✅ \*\*\(.*\)\*\*: \(.*\), \(.*\)$/| ✅ | \1 | \2 | \3 |/' | \
-            sed 's/^❌ \*\*\(.*\)\*\*: \(.*\), \(.*\)$/| ❌ | \1 | \2 | \3 |/')
-          EOF
-
-          # Prepare chart lists cleanly
-          TESTED_CHARTS=$(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' ', ' | sed 's/^, *//' | sed 's/, *$//')
-          FAILED_CHARTS=$(echo '${{ steps.helm-tests.outputs.failed-charts }}' | tr ' ' ', ' | sed 's/^, *//' | sed 's/, *$//')
-          SUCCESS_CHARTS=$(echo '${{ steps.helm-tests.outputs.success-charts }}' | tr ' ' ', ' | sed 's/^, *//' | sed 's/, *$//')
-
-          # Compose PR comment
+          
+          # Convert comma-separated charts back to readable format for display
+          TESTED_CHARTS=$(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' ', ')
+          
+          # Prepare comment body
           if [ "${{ steps.helm-tests.outputs.exit-code }}" = "0" ]; then
             comment_body="## 🎉 Helm Chart Tests Passed!
 
-          All modified charts have been successfully validated:
+            All modified charts have been successfully validated:
 
-          | Status | Chart | Template | Dry-run |
-          |--------|--------|-----------|----------|
-          $TEST_RESULTS_TABLE
+            ${{ steps.helm-tests.outputs.test-results-table }}
 
-          **Summary:**
-          - 📊 Charts tested: $TESTED_CHARTS
-          - ✅ Successful charts: $SUCCESS_CHARTS
+            **Summary:**
+            - ✅ Charts tested: **$TESTED_CHARTS**
+            - ✅ All template validations passed
+            - ✅ All dry-run installations passed
 
-          **📋 Detailed Information:**
-          - 🔗 [View workflow run]($WORKFLOW_URL)
-          $ARTIFACT_LINK
-          - 💡 $ARTIFACT_NOTE
+            **📋 Detailed Information:**
+            - 🔗 [View workflow run]($WORKFLOW_URL)
+            $ARTIFACT_LINK
+            - 💡 $ARTIFACT_NOTE
 
-          The PR is ready for review! 🚀"
+            The PR is ready for review! 🚀"
           else
             comment_body="## ❌ Helm Chart Tests Failed
 
-          Some charts failed validation:
+            Some charts failed validation:
 
-          | Status | Chart | Template | Dry-run |
-          |--------|--------|-----------|----------|
-          $TEST_RESULTS_TABLE
+            ${{ steps.helm-tests.outputs.test-results-table }}
 
-          **Summary:**
-          - 📊 Charts tested: $TESTED_CHARTS
-          - ❌ Failed charts: $FAILED_CHARTS
-          - ✅ Successful charts: $SUCCESS_CHARTS
+            **Summary:**
+            - 📊 Charts tested: **$TESTED_CHARTS**
+            - ❌ Failed charts: **${{ steps.helm-tests.outputs.failed-charts }}**
+            - ✅ Successful charts: **${{ steps.helm-tests.outputs.success-charts }}**
 
-          **🔍 Debugging Information:**
-          - 🔗 [View workflow run]($WORKFLOW_URL)
-          $ARTIFACT_LINK
-          - 💡 $ARTIFACT_NOTE
-          - 🔍 Check the \`Validate and test changed charts\` step for detailed error output
+            **🔍 Debugging Information:**
+            - 🔗 [View workflow run]($WORKFLOW_URL)
+            $ARTIFACT_LINK
+            - 💡 $ARTIFACT_NOTE
+            - 🔍 Check the \`Validate and test changed charts\` step for detailed error output
 
-          Please fix the issues before merging. 🔧"
+            Please fix the issues before merging. 🔧"
           fi
-
+          
           # Post comment to PR using curl
           curl -X POST \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
             -d "{\"body\": $(echo "$comment_body" | jq -Rs .)}"
-
-          # Exit with original exit code
+          
+          # Exit with the original exit code
           exit ${{ steps.helm-tests.outputs.exit-code }}
-
 
       # - name: Run chart-releaser
       #   uses: helm/chart-releaser-action@v1.6.0
