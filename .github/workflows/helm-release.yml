@@ -324,7 +324,7 @@ jobs:
             ${{ steps.helm-tests.outputs.test-results }}
 
             **Summary:**
-            - ✅ Charts tested: $(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' ' ')
+            - ✅ Charts tested: **$(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' ' ')**
             - ✅ All template validations passed
             - ✅ All dry-run installations passed
 
