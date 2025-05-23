@@ -316,7 +316,9 @@ jobs:
           fi
 
           # Format test results into a real Markdown table
-          TEST_RESULTS_TABLE=$(echo "${{ steps.helm-tests.outputs.test-results }}" | \
+          TEST_RESULTS_TABLE=$(echo "| Status | Chart | Template | Dry-run | \
+            |--------|--------|-----------|----------| \
+            ${{ steps.helm-tests.outputs.test-results }}" | \
             sed 's/^✅ \*\*\(.*\)\*\*: \(.*\), \(.*\)$/| ✅ | \1 | \2 | \3 |/' | \
             sed 's/^❌ \*\*\(.*\)\*\*: \(.*\), \(.*\)$/| ❌ | \1 | \2 | \3 |/')
 
@@ -331,8 +333,6 @@ jobs:
 
           All modified charts have been successfully validated:
 
-          | Status | Chart | Template | Dry-run |
-          |--------|--------|-----------|----------|
           $TEST_RESULTS_TABLE
 
           **Summary:**
