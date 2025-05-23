@@ -59,7 +59,7 @@ ingressIndex:
 logLevel: info
 
 monitoring:
-  enabled: true
+  enabled: false
   labels: prometheus
   serviceMonitor:
     metricRelabelings:
