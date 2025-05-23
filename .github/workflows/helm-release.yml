@@ -270,28 +270,18 @@ jobs:
       - name: Post PR comment with test results
         if: github.event_name == 'pull_request'
         run: |
-          # Wait a moment for artifact to be processed
-          sleep 5
-          
-          # Get artifact URL using GitHub API
-          ARTIFACT_INFO=$(curl -s \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts")
-          
-          # Extract artifact download URL (requires authentication)
-          ARTIFACT_URL=$(echo "$ARTIFACT_INFO" | jq -r '.artifacts[] | select(.name | startswith("helm-test-logs")) | .archive_download_url' | head -1)
-          
-          # Fallback to workflow run URL if artifact URL not found
-          if [ "$ARTIFACT_URL" = "null" ] || [ -z "$ARTIFACT_URL" ]; then
-            ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            ARTIFACT_TEXT="View workflow run and download artifacts"
-          else
-            ARTIFACT_TEXT="Download detailed test logs (requires GitHub login)"
-          fi
-          
-          # Generate workflow run URL for easy access
+          # Generate URLs
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          # Check if we have artifact URL
+          if [ "${{ steps.get-artifact-url.outputs.artifact-available }}" = "true" ]; then
+            ARTIFACT_URL="${{ steps.get-artifact-url.outputs.artifact-url }}"
+            ARTIFACT_LINK="- 📁 [Download detailed test logs]($ARTIFACT_URL)"
+            ARTIFACT_NOTE="Click the download link above to get detailed logs for all helm operations."
+          else
+            ARTIFACT_LINK="- 📁 [View artifacts in workflow run]($WORKFLOW_URL) (look for \`helm-test-logs-${{ github.run_number }}\`)"
+            ARTIFACT_NOTE="Download the \`helm-test-logs-${{ github.run_number }}\` artifact from the workflow run page."
+          fi
           
           # Prepare comment body
           if [ "${{ steps.helm-tests.outputs.exit-code }}" = "0" ]; then
@@ -308,8 +298,8 @@ jobs:
 
             **📋 Detailed Information:**
             - 🔗 [View workflow run]($WORKFLOW_URL)
-            - 📁 [$ARTIFACT_TEXT]($ARTIFACT_URL)
-            - 📝 Artifact name: \`helm-test-logs-${{ github.run_number }}\`
+            $ARTIFACT_LINK
+            - 💡 $ARTIFACT_NOTE
 
             The PR is ready for review! 🚀"
           else
@@ -326,9 +316,9 @@ jobs:
 
             **🔍 Debugging Information:**
             - 🔗 [View workflow run]($WORKFLOW_URL)
-            - 📁 [$ARTIFACT_TEXT]($ARTIFACT_URL)
-            - 📝 Artifact name: \`helm-test-logs-${{ github.run_number }}\`
-            - 💡 Check the \`Validate and test changed charts\` step for detailed error output
+            $ARTIFACT_LINK
+            - 💡 $ARTIFACT_NOTE
+            - 🔍 Check the \`Validate and test changed charts\` step for detailed error output
 
             Please fix the issues before merging. 🔧"
           fi
