@@ -267,6 +267,38 @@ jobs:
           path: /tmp/helm-logs/
           retention-days: 30
 
+      - name: Construct artifact URL
+        if: always()
+        id: artifact-url
+        run: |
+          # Wait for artifact to be processed
+          sleep 3
+          
+          # Get the artifact ID from GitHub API
+          echo "Fetching artifact information..."
+          ARTIFACT_RESPONSE=$(curl -s \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts")
+          
+          echo "API Response:"
+          echo "$ARTIFACT_RESPONSE" | jq '.'
+          
+          # Get our specific artifact
+          ARTIFACT_ID=$(echo "$ARTIFACT_RESPONSE" | jq -r --arg name "helm-test-logs-${{ github.run_number }}" '.artifacts[] | select(.name == $name) | .id')
+          
+          if [ "$ARTIFACT_ID" != "null" ] && [ -n "$ARTIFACT_ID" ]; then
+            ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID"
+            echo "artifact-url=$ARTIFACT_URL" >> $GITHUB_OUTPUT
+            echo "artifact-available=true" >> $GITHUB_OUTPUT
+            echo "✅ Artifact URL: $ARTIFACT_URL"
+          else
+            echo "❌ Could not determine artifact ID"
+            echo "Available artifacts:"
+            echo "$ARTIFACT_RESPONSE" | jq -r '.artifacts[].name'
+            echo "artifact-available=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Post PR comment with test results
         if: github.event_name == 'pull_request'
         run: |
