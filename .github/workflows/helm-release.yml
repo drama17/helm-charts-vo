@@ -306,8 +306,8 @@ jobs:
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           
           # Check if we have artifact URL
-          if [ "${{ steps.artifact-url.outputs.artifact-available }}" = "true" ]; then
-            ARTIFACT_URL="${{ steps.artifact-url.outputs.artifact-url }}"
+          if [ "${{ steps.get-artifact-url.outputs.artifact-available }}" = "true" ]; then
+            ARTIFACT_URL="${{ steps.get-artifact-url.outputs.artifact-url }}"
             ARTIFACT_LINK="- 📁 [Download detailed test logs]($ARTIFACT_URL)"
             ARTIFACT_NOTE="Click the download link above to get detailed logs for all helm operations."
           else
@@ -324,7 +324,7 @@ jobs:
             ${{ steps.helm-tests.outputs.test-results }}
 
             **Summary:**
-            - ✅ Charts tested: **$(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' ' ')**
+            - ✅ Charts tested: \`$(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' '\`, \`')\`
             - ✅ All template validations passed
             - ✅ All dry-run installations passed
 
@@ -342,9 +342,9 @@ jobs:
             ${{ steps.helm-tests.outputs.test-results }}
 
             **Summary:**
-            - 📊 Charts tested: $(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' ' ')
-            - ❌ Failed charts:${{ steps.helm-tests.outputs.failed-charts }}
-            - ✅ Successful charts:${{ steps.helm-tests.outputs.success-charts }}
+            - 📊 Charts tested: \`$(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' '\`, \`')\`
+            - ❌ Failed charts: \`$(echo '${{ steps.helm-tests.outputs.failed-charts }}' | tr ' ' '\`, \`' | sed 's/^, //' | sed 's/, $//')\`
+            - ✅ Successful charts: \`$(echo '${{ steps.helm-tests.outputs.success-charts }}' | tr ' ' '\`, \`' | sed 's/^, //' | sed 's/, $//')\`
 
             **🔍 Debugging Information:**
             - 🔗 [View workflow run]($WORKFLOW_URL)
