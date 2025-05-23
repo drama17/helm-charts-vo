@@ -314,46 +314,61 @@ jobs:
             ARTIFACT_LINK="- 📁 [View artifacts in workflow run]($WORKFLOW_URL) (look for \`helm-test-logs-${{ github.run_number }}\`)"
             ARTIFACT_NOTE="Download the \`helm-test-logs-${{ github.run_number }}\` artifact from the workflow run page."
           fi
+
+          # Format test results as a Markdown table
+          TEST_RESULTS_TABLE=$(echo "${{ steps.helm-tests.outputs.test-results }}" | \
+            sed 's/^✅ \*\*\(.*\)\*\*: \(.*\), \(.*\)$/| ✅ \1 | \2 | \3 |/' | \
+            sed 's/^❌ \*\*\(.*\)\*\*: \(.*\), \(.*\)$/| ❌ \1 | \2 | \3 |/')
+
+          # Prepare chart lists
+          TESTED_CHARTS=$(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' ', ')
+          FAILED_CHARTS=$(echo '${{ steps.helm-tests.outputs.failed-charts }}' | tr ' ' ', ' | sed 's/^, //' | sed 's/, $//')
+          SUCCESS_CHARTS=$(echo '${{ steps.helm-tests.outputs.success-charts }}' | tr ' ' ', ' | sed 's/^, //' | sed 's/, $//')
+
           
           # Prepare comment body
           if [ "${{ steps.helm-tests.outputs.exit-code }}" = "0" ]; then
             comment_body="## 🎉 Helm Chart Tests Passed!
 
-            All modified charts have been successfully validated:
+          All modified charts have been successfully validated:
 
-            ${{ steps.helm-tests.outputs.test-results }}
+          | Status | Chart | Template | Dry-run |
+          |--------|--------|-----------|----------|
+          $TEST_RESULTS_TABLE
 
-            **Summary:**
-            - ✅ Charts tested: \`$(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' '\`, \`')\`
-            - ✅ All template validations passed
-            - ✅ All dry-run installations passed
+          **Summary:**
+          - 📊 Charts tested: $TESTED_CHARTS
+          - ✅ Successful charts: $SUCCESS_CHARTS
 
-            **📋 Detailed Information:**
-            - 🔗 [View workflow run]($WORKFLOW_URL)
-            $ARTIFACT_LINK
-            - 💡 $ARTIFACT_NOTE
+          **📋 Detailed Information:**
+          - 🔗 [View workflow run]($WORKFLOW_URL)
+          $ARTIFACT_LINK
+          - 💡 $ARTIFACT_NOTE
 
-            The PR is ready for review! 🚀"
+          The PR is ready for review! 🚀"
           else
             comment_body="## ❌ Helm Chart Tests Failed
 
-            Some charts failed validation:
+          Some charts failed validation:
 
-            ${{ steps.helm-tests.outputs.test-results }}
+          | Status | Chart | Template | Dry-run |
+          |--------|--------|-----------|----------|
+          $TEST_RESULTS_TABLE
 
-            **Summary:**
-            - 📊 Charts tested: \`$(echo '${{ needs.detect-changes.outputs.changed-charts }}' | tr ',' '\`, \`')\`
-            - ❌ Failed charts: \`$(echo '${{ steps.helm-tests.outputs.failed-charts }}' | tr ' ' '\`, \`' | sed 's/^, //' | sed 's/, $//')\`
-            - ✅ Successful charts: \`$(echo '${{ steps.helm-tests.outputs.success-charts }}' | tr ' ' '\`, \`' | sed 's/^, //' | sed 's/, $//')\`
+          **Summary:**
+          - 📊 Charts tested: $TESTED_CHARTS
+          - ❌ Failed charts: $FAILED_CHARTS
+          - ✅ Successful charts: $SUCCESS_CHARTS
 
-            **🔍 Debugging Information:**
-            - 🔗 [View workflow run]($WORKFLOW_URL)
-            $ARTIFACT_LINK
-            - 💡 $ARTIFACT_NOTE
-            - 🔍 Check the \`Validate and test changed charts\` step for detailed error output
+          **🔍 Debugging Information:**
+          - 🔗 [View workflow run]($WORKFLOW_URL)
+          $ARTIFACT_LINK
+          - 💡 $ARTIFACT_NOTE
+          - 🔍 Check the \`Validate and test changed charts\` step for detailed error output
 
-            Please fix the issues before merging. 🔧"
+          Please fix the issues before merging. 🔧"
           fi
+
           
           # Post comment to PR using curl
           curl -X POST \
